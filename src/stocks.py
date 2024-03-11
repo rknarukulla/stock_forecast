@@ -41,12 +41,11 @@ def get_lag_features(data, feature=None):
 
     lagged_df = pd.concat([count, *lag_features, *rolling_mean_features], axis="columns")
 
-    return lagged_df
+    return lagged_df.drop(feature,axis=1,errors='ignore')
 
 
 def get_target(data, target_feature=None, future_days=1):
     # Calculate lagged features
 
     target_col = data[target_feature]
-
-    return pd.DataFrame(target_col.shift(-future_days).rename(f"{target_feature}_next_{future_days}d"))
+    return target_col.shift(-future_days).rename(f"{target_feature}_next_{future_days}d")
