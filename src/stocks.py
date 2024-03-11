@@ -7,6 +7,7 @@ import yfinance as yf
 
 
 def download_stocks(stock_codes, start_date, end_date):
+    """"""
     # Fetch the stock data
     stock_data = {}
     for code in stock_codes:
@@ -15,24 +16,17 @@ def download_stocks(stock_codes, start_date, end_date):
     return stock_data
 
 
-def get_tech_features(stock_data_in):
-    for code, data in stock_data_in.items():
-        if not data.empty:
-            # Example: Calculate Moving Average Convergence Divergence (MACD)
-            data['MACD'] = ta.trend.MACD(data['Close']).macd()
-
-            # Example: Calculate Relative Strength Index (RSI)
-            data['RSI'] = ta.momentum.RSIIndicator(data['Close']).rsi()
-            print(f"Technical indicators for {code} on {start_date}:")
-            print(data[['MACD', 'RSI']])
-        else:
-            print(f"No data for {code} on {start_date}.")
+def get_tech_features(data):
+    # Add all ta features filling nans values
+    return ta.add_all_ta_features(
+        data, open="Open", high="High", low="Low", close="Close", volume="Volume", fillna=True)
 
 
-def get_lag_features(data, feature=None):
+def get_lag_features(data, feature=None, lags=None):
     # Calculate lagged features
 
-    lags = [1, 2, 3, 4, 5, 7, 14, 30, 100, 200]
+    if lags is None:
+        lags = [1, 2, 3, 4, 5, 7, 14, 30, 100, 200]
 
     count = data[feature]
 
