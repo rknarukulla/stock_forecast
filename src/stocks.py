@@ -1,6 +1,8 @@
 import pandas as pd
 import ta
 import yfinance as yf
+import xgboost as xgb
+from sklearn.metrics import mean_squared_error
 
 
 #
@@ -35,7 +37,7 @@ def get_lag_features(data, feature=None, lags=None):
 
     lagged_df = pd.concat([count, *lag_features, *rolling_mean_features], axis="columns")
 
-    return lagged_df.drop(feature,axis=1,errors='ignore')
+    return lagged_df.drop(feature, axis=1, errors='ignore')
 
 
 def get_target(data, target_feature=None, future_days=1):
@@ -43,3 +45,54 @@ def get_target(data, target_feature=None, future_days=1):
 
     target_col = data[target_feature]
     return target_col.shift(-future_days).rename(f"{target_feature}_next_{future_days}d")
+
+
+def build_model(X, y):
+    xgb_model = xgb.XGBRegressor(objective="reg:linear", random_state=42)
+    xgb_model.fit(X, y)
+    y_pred = pd.DataFrame(xgb_model.predict(X), index=X.index)
+    print(f"mean Square error in train data: {mean_squared_error(y, y_pred)}", )
+
+    return xgb_model
+
+
+def build_n_forecast(stock_names):
+    all_predictions = pd.DataFrame()
+    for stock_name in stock_names:
+        features_path = f"features_{stock_name}.csv"
+        target_path = f"target_{stock_name}.csv"
+        test_real_path = f"features_{stock_name}_future.csv"
+
+        X = pd.read_csv(features_path).set_index("Date")
+        y = pd.read_csv(target_path).set_index("Date")
+        test_real = pd.read_csv(test_real_path).set_index("Date")
+        xgb_model = build_model(X, y)
+
+        y_real = pd.DataFrame(xgb_model.predict(test_real), index=test_real.index, columns=["forecast"]).reset_index()
+        y_real["Stock"] = stock_name
+        if stock_name == stock_names[0]:
+            all_predictions = y_real
+        else:
+            all_predictions = pd.concat([all_predictions, y_real], axis='index')
+    return all_predictions
+
+
+def generate_all_features(stock_codes, start_date=None, end_date=None):
+    for stock_name in stock_codes:
+        print("generating features for ", stock_name)
+        stock_data = download_stocks([stock_name], start_date, end_date)
+        data = get_tech_features(stock_data[stock_name])
+        lag_features = get_lag_features(data, feature='Close').drop('Close', axis=1, errors='ignore').fillna(0)
+        data_features = pd.concat([data, lag_features], axis='columns')
+        y = get_target(data_features, target_feature='Close')
+        ind_features = data_features.drop(data_features.tail(1).index)
+        y = y.drop(y.tail(1).index)
+        data_future = data_features[data_features.index.isin(data_features.tail(1).index)]
+        features_path = f"features_{stock_name}.csv"
+        target_path = f"target_{stock_name}.csv"
+        future_data_path = f"features_{stock_name}_future.csv"
+        ind_features.to_csv(features_path)
+        y.to_csv(target_path)
+        data_future.to_csv(future_data_path)
+
+        print("file names: ", features_path, target_path, future_data_path)
