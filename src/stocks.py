@@ -64,7 +64,7 @@ def build_n_forecast(stock_names):
         print("Building model for ", stock_name)
         features_path = f"features_{stock_name}.csv"
         target_path = f"target_{stock_name}.csv"
-        test_real_path = f"features_{stock_name}_future.csv"
+        test_real_path = f"features_{stock_name}_test.csv"
 
         X = pd.read_csv(features_path).set_index("Date")
         y = pd.read_csv(target_path).set_index("Date")
@@ -81,7 +81,8 @@ def build_n_forecast(stock_names):
     return all_predictions
 
 
-def generate_all_features(stock_codes, start_date=None, end_date=None):
+def generate_all_features(stock_codes, start_date=None, end_date=None, test_days=1, get_test_data=False):
+    y_test = pd.DataFrame()
     for stock_name in stock_codes:
         print("generating features for ", stock_name)
         stock_data = download_stocks([stock_name], start_date, end_date)
@@ -89,14 +90,20 @@ def generate_all_features(stock_codes, start_date=None, end_date=None):
         lag_features = get_lag_features(data, feature='Close').drop('Close', axis=1, errors='ignore').fillna(0)
         data_features = pd.concat([data, lag_features], axis='columns')
         y = get_target(data_features, target_feature='Close')
-        ind_features = data_features.drop(data_features.tail(1).index)
-        y = y.drop(y.tail(1).index)
-        data_future = data_features[data_features.index.isin(data_features.tail(1).index)]
+        ind_features = data_features.drop(data_features.tail(test_days).index)
+        data_future = data_features[data_features.index.isin(data_features.tail(test_days).index)]
+        if get_test_data:
+            y_test = y.tail(test_days)
+        y = y.drop(y.tail(test_days).index)
+
         features_path = f"features_{stock_name}.csv"
         target_path = f"target_{stock_name}.csv"
-        future_data_path = f"features_{stock_name}_future.csv"
+        future_data_path = f"features_{stock_name}_test.csv"
+        test_data_path = f"target_{stock_name}_test.csv"
         ind_features.to_csv(features_path)
         y.to_csv(target_path)
         data_future.to_csv(future_data_path)
+        if get_test_data:
+            y_test.to_csv(test_data_path)
 
         print("file names: ", features_path, target_path, future_data_path)
