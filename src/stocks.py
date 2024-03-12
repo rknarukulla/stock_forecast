@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pandas as pd
 import ta
 import yfinance as yf
@@ -59,6 +61,7 @@ def build_model(X, y):
 def build_n_forecast(stock_names):
     all_predictions = pd.DataFrame()
     for stock_name in stock_names:
+        print("Building model for ", stock_name)
         features_path = f"features_{stock_name}.csv"
         target_path = f"target_{stock_name}.csv"
         test_real_path = f"features_{stock_name}_future.csv"
@@ -70,6 +73,7 @@ def build_n_forecast(stock_names):
 
         y_real = pd.DataFrame(xgb_model.predict(test_real), index=test_real.index, columns=["forecast"]).reset_index()
         y_real["Stock"] = stock_name
+        y_real["Forecast_period"] = pd.to_datetime(y_real["Date"]) + timedelta(days=1)
         if stock_name == stock_names[0]:
             all_predictions = y_real
         else:
