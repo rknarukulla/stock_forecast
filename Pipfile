@@ -9,8 +9,11 @@ ta = "*"
 jupyterlab = "*"
 xgboost = "*"
 scikit-learn = "*"
+pmdarima = "*"
 
 [dev-packages]
+mypy = "*"
+black = {extras = ["jupyter"], version = "*"}
 
 [requires]
 python_version = "3.9"
