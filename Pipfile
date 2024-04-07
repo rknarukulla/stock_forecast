@@ -10,6 +10,7 @@ jupyterlab = "*"
 xgboost = "*"
 scikit-learn = "*"
 pmdarima = "*"
+h2o = "*"
 
 [dev-packages]
 mypy = "*"

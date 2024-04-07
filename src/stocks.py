@@ -5,6 +5,7 @@ import pandas as pd
 import ta
 import xgboost as xgb
 import yfinance as yf
+from h2o import h2o
 
 PARAMS: dict = {
     "max_depth": 3,
@@ -76,7 +77,7 @@ def get_target(data, target_feature=None, future_days=1):
     )
 
 
-def build_model(X, y, validation_days=7):
+def build_xgboost_model(X, y, validation_days):
     x_train = X.iloc[:-validation_days]
     y_train = y.iloc[:-validation_days]
 
@@ -90,23 +91,55 @@ def build_model(X, y, validation_days=7):
     eval_list = [(drain, "train"), (deval, "test")]
     xgb_model = xgb.train(PARAMS, drain, num_boost_round=10, evals=eval_list)
 
-    # xgb_model = xgb.XGBRegressor(objective="reg:linear", random_state=42)
-    # xgb_model.fit(X, y)
-    # y_pred = pd.DataFrame(xgb_model.predict(X), index=X.index)
-    # print(f"mean Square error in train data: {mean_squared_error(y, y_pred)}", )
-
     return xgb_model
+
+
+def build_model(X, y, validation_days=7, model_name="xgboost"):
+    if model_name == "xgboost":
+        return build_xgboost_model(X, y, validation_days)
+    elif model_name == "h2o_automl":
+        return build_h2o_automl(X, y, validation_days)
+    else:
+        raise Exception("Invalid model_name")
+
+
+def build_h2o_automl(X, y, validation_days=7, stock_name="stock_name"):
+    import h2o
+    from h2o.automl import H2OAutoML
+
+    h2o.init()
+    data = h2o.H2OFrame(pd.concat([X, y], axis="columns"))
+    train = data.head(data.shape[0] - validation_days)
+    test = data.tail(validation_days)
+
+    x = list(X.columns)
+    y_col = list(y.columns)[0]
+
+    aml = H2OAutoML(
+        max_models=5, seed=1, sort_metric="rmse", verbosity="error"
+    )  # project_name=stock_name
+    aml.train(x=x, y=y_col, training_frame=train, leaderboard_frame=test)
+
+    return aml
 
 
 def forecast_stocks(x, model, model_name="xgboost"):
     if model_name == "xgboost":
         return model.predict(xgb.DMatrix(x))
+    elif model_name == "h2o_automl":
+        x_real_h20 = h2o.H2OFrame(x)
+        return h2o.as_list(model.leader.predict(x_real_h20))
+
     else:
         raise Exception("Invalid model")
 
 
 def build_n_forecast(
-    stock_names, date_column="Date", future_days=1, validation_days=7
+    stock_names,
+    date_column="Date",
+    future_days=1,
+    validation_days=7,
+    model_name="xgboost",
 ):
     all_predictions = pd.DataFrame()
     for stock_name in stock_names:
@@ -119,12 +152,19 @@ def build_n_forecast(
         y = pd.read_csv(target_path).set_index(date_column)
 
         test_real = pd.read_csv(test_real_path).set_index(date_column)
-        model = build_model(X, y, validation_days)
+        model = build_model(X, y, validation_days, model_name=model_name)
 
-        forecast = forecast_stocks(test_real, model, model_name="xgboost")
-        y_real = pd.DataFrame(
-            forecast, index=test_real.index, columns=["forecast"]
-        ).reset_index()
+        forecast = forecast_stocks(test_real, model, model_name=model_name)
+
+        if not isinstance(forecast, pd.DataFrame):
+            y_real = pd.DataFrame(
+                forecast, index=test_real.index, columns=["forecast"]
+            ).reset_index()
+        else:
+            y_real = forecast
+            y_real.columns = ["forecast"]
+            y_real[date_column] = test_real.index
+
         y_real["Stock"] = stock_name
         y_real["Forecast_period"] = pd.to_datetime(
             y_real[date_column]
