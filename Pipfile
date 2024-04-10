@@ -11,10 +11,15 @@ xgboost = "*"
 scikit-learn = "*"
 pmdarima = "*"
 h2o = "*"
+pandas-market-calendars = "*"
+matplotlib = "*"
+seaborn = "*"
+icecream = "*"
 
 [dev-packages]
 mypy = "*"
-black = {extras = ["jupyter"], version = "*"}
+black = { extras = ["jupyter"], version = "*" }
+pytest = "*"
 
 [requires]
-python_version = "3.9"
+python_version = "3.11"
