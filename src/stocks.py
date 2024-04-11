@@ -10,7 +10,7 @@ import xgboost as xgb
 import yfinance as yf
 from h2o.automl import H2OAutoML
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
-import icecream as ic
+from icecream import ic
 
 PARAMS: dict[str, Any] = {
     "max_depth": 3,
@@ -40,8 +40,10 @@ def download_stocks(
     # Fetch the stock data
     stock_data: dict[str, pd.DataFrame] = {}
     for code in stock_codes:
+        ic("downloading stock data for", code)
         stock_data[code] = yf.download(code, start=start_date, end=end_date)
-
+        file_path = f"{code}.csv"
+        stock_data[code].to_csv(file_path)
     return stock_data
 
 
@@ -303,10 +305,15 @@ def get_day_names(
         pd.DataFrame: Dataframe containing the day names as one hot encoded.
 
     """
-    if data.index.name == date_column:
-        data = data.reset_index()
-    data["day"] = data[date_column].dt.day_name()
-    return pd.get_dummies(data["day"])
+    if is_col_indexed(data, date_column):
+        df = data.reset_index()[[date_column]]
+    else:
+        df = data[[date_column]]
+    df["day"] = df[date_column].dt.day_name()
+    dummies = pd.get_dummies(df["day"])
+    if is_col_indexed(data, date_column):
+        dummies.index = data.index
+    return dummies
 
 
 def optimized_exponential_smoothing(
@@ -320,7 +327,7 @@ def optimized_exponential_smoothing(
     use_boxcox: bool = True,
 ) -> tuple[pd.Series, pd.Series]:
 
-    if data.index.name == date_column:
+    if is_col_indexed(data, date_column):
         ts = data[target_column]
     else:
         ts = data.set_index(date_column)[target_column]
@@ -342,6 +349,11 @@ def optimized_exponential_smoothing(
     return fitted_values, forecast
 
 
+def is_col_indexed(data: pd.DataFrame, column_name: str) -> bool:
+    """check if a columns is set"""
+    return data.index.name == column_name
+
+
 def get_date_diff(
     data: pd.DataFrame, date_column: str = "Date"
 ) -> pd.DataFrame:
@@ -354,14 +366,16 @@ def get_date_diff(
     Returns:
         pd.DataFrame: Dataframe containing the date difference.
     """
-    ic.ic(data.index.name)
-    if data.index.name == date_column:
-        ts = data.reset_index()[date_column]
+    if is_col_indexed(data, date_column):
+        ts = data.reset_index()[[date_column]]
     else:
-        ts = data[date_column]
-    data["diff_previous_days"] = ts[date_column].dt.days
-    data["diff_previous_days"] = data["diff_previous_days"].fillna(0)
-    return data["diff_previous_days"]
+        ts = data[[date_column]]
+    ts[date_column] = pd.to_datetime(ts[date_column])
+    ts["diff_previous_days"] = ts[date_column].diff().dt.days
+    ts["diff_previous_days"] = ts["diff_previous_days"].fillna(0)
+    if is_col_indexed(data, date_column):
+        ts = ts.set_index(date_column)
+    return ts["diff_previous_days"]
 
 
 def generate_all_features(
@@ -391,8 +405,9 @@ def generate_all_features(
 
     y_test: pd.DataFrame = pd.DataFrame()
     for stock_name in stock_codes:
-        print("generating features for ", stock_name)
+        ic("generating features for ", stock_name)
         stock_data = download_stocks([stock_name], start_date, end_date)
+
         data = get_tech_features(stock_data[stock_name])
         lag_features = (
             get_lag_features(data, feature="Close")
@@ -419,7 +434,6 @@ def generate_all_features(
         data_features = pd.concat(
             [data, lag_features, day_features], axis="columns"
         )
-
         y = get_target(data_features, target_feature="Close")
         ind_features = data_features.drop(data_features.tail(test_days).index)
         data_future = data_features[
@@ -439,4 +453,4 @@ def generate_all_features(
         if get_test_data:
             y_test.to_csv(test_data_path)
 
-        print("file names: ", features_path, target_path, future_data_path)
+        ic("file names: ", features_path, target_path, future_data_path)
